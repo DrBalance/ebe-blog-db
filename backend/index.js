@@ -189,44 +189,46 @@ app.get('/stats', async (req, res) => {
 app.get('/analyze', async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT title_ko, title_ja, category,
-             LEFT(content_ko, 300) AS summary
+      SELECT title_ko, category
       FROM posts
-      WHERE content_ko != ''
+      WHERE content_ko != '' AND title_ko != ''
       ORDER BY RANDOM()
-      LIMIT 100
+      LIMIT 80
     `);
 
     const postList = result.rows
-      .map(p => `제목: ${p.title_ko}\n카테고리: ${p.category || '미분류'}\n요약: ${p.summary}`)
-      .join('\n\n---\n\n');
+      .map(p => `${p.title_ko} [${p.category || '미분류'}]`)
+      .join('\n');
 
     const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 4096,
+      max_tokens: 8000,
       messages: [{
         role: 'user',
-        content: `아래는 일본 의사 에베 코지(江部康二)의 당질제한 블로그 포스트 100개 샘플입니다.
-이 콘텐츠를 바탕으로 한국 YouTube 채널의 당질제한 콘텐츠 주제를 10개 분석해주세요.
+        content: `다음은 당질제한 의사 에베 코지의 블로그 포스트 제목 목록입니다.
+이를 바탕으로 한국 YouTube 채널의 당질제한 콘텐츠 주제 8개를 분석해주세요.
 
-응답은 반드시 아래 JSON 배열 형식만 출력하세요. 다른 텍스트 없이 JSON만:
-[
-  {
-    "topic": "주제명 (한국어, 20자 이내)",
-    "description": "이 주제가 왜 YouTube 콘텐츠로 좋은지 설명 (2-3문장)",
-    "example_titles": ["영상 제목 1", "영상 제목 2", "영상 제목 3", "영상 제목 4", "영상 제목 5"],
-    "related_keywords": ["키워드1", "키워드2", "키워드3", "키워드4", "키워드5"]
-  }
-]
+반드시 순수 JSON 배열만 출력하세요. 마크다운, 코드블록, 설명 텍스트 없이 JSON만:
+[{"topic":"주제명","description":"설명","example_titles":["제목1","제목2","제목3","제목4","제목5"],"related_keywords":["키워드1","키워드2","키워드3"]}]
 
-포스트 샘플:
+포스트 제목:
 ${postList}`
       }]
     });
 
-    const text = message.content[0].text.trim();
-    const jsonMatch = text.match(/\[[\s\S]*\]/);
-    const topics = JSON.parse(jsonMatch ? jsonMatch[0] : text);
+    const raw = message.content[0].text.trim()
+      .replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '');
+
+    let topics;
+    try {
+      topics = JSON.parse(raw);
+    } catch {
+      const match = raw.match(/\[[\s\S]*\]/);
+      if (!match) throw new Error('AI 응답에서 JSON 배열을 찾을 수 없습니다');
+      topics = JSON.parse(match[0]);
+    }
+
+    if (!Array.isArray(topics)) throw new Error('AI 응답이 배열 형식이 아닙니다');
 
     res.json(topics);
   } catch (e) {

@@ -471,8 +471,9 @@ function YouTubeBoard() {
   const runAnalyze = async () => {
     setAnalyzing(true);
     try {
-      const topics = await fetch(`${API}/analyze`).then(r => r.json());
-      const newCards = topics.map((t, i) => ({
+      const data = await fetch(`${API}/analyze`).then(r => r.json());
+      if (!Array.isArray(data)) throw new Error(data.error || 'AI 응답 형식 오류');
+      const newCards = data.map((t, i) => ({
         id: Date.now() + i,
         column: "아이디어",
         ...t,
