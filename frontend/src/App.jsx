@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:3000";
-const ANTHROPIC_KEY = import.meta.env.VITE_ANTHROPIC_KEY || "";
 
 const COLUMNS = ["아이디어", "작업 중", "촬영 대기", "완료"];
 const COLUMN_COLORS = {
@@ -282,23 +281,17 @@ function CardModal({ card, onClose, onUpdate }) {
     setChatInput("");
     setChatLoading(true);
     try {
-      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      const resp = await fetch(`${API}/chat`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": ANTHROPIC_KEY,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "claude-haiku-4-5-20251001",
-          max_tokens: 2048,
           system: `당신은 한국 YouTube 당질제한 콘텐츠 전문가입니다. 현재 주제: "${card.topic}". 관련 키워드: ${card.related_keywords?.join(", ")}`,
           messages: newMessages,
         }),
       });
       const data = await resp.json();
-      setChatMessages(prev => [...prev, { role: "assistant", content: data.content[0].text }]);
+      if (data.error) throw new Error(data.error);
+      setChatMessages(prev => [...prev, { role: "assistant", content: data.content }]);
     } catch (e) {
       setChatMessages(prev => [...prev, { role: "assistant", content: `오류: ${e.message}` }]);
     }

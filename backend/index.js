@@ -238,5 +238,29 @@ ${postList}`
 });
 
 
+// ─────────────────────────────────────────────
+// POST /chat — Anthropic API 프록시
+// body: { messages, system }
+// ─────────────────────────────────────────────
+app.post('/chat', async (req, res) => {
+  try {
+    const { messages, system } = req.body;
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({ error: 'messages 배열이 필요합니다' });
+    }
+    const response = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 2048,
+      ...(system && { system }),
+      messages,
+    });
+    res.json({ content: response.content[0].text });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🚀 API 서버 실행 중: http://localhost:${PORT}`));
