@@ -12,9 +12,11 @@
 const express = require('express');
 const { Pool } = require('pg');
 const cors = require('cors');
+const Anthropic = require('@anthropic-ai/sdk');
 
 const app = express();
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 app.use(cors());
 app.use(express.json());
@@ -176,6 +178,59 @@ app.get('/stats', async (req, res) => {
       latest_post: latest.rows[0]?.published_at,
     });
   } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+
+// ─────────────────────────────────────────────
+// GET /analyze — YouTube 주제 AI 분석
+// ─────────────────────────────────────────────
+app.get('/analyze', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT title_ko, title_ja, category,
+             LEFT(content_ko, 300) AS summary
+      FROM posts
+      WHERE content_ko != ''
+      ORDER BY RANDOM()
+      LIMIT 100
+    `);
+
+    const postList = result.rows
+      .map(p => `제목: ${p.title_ko}\n카테고리: ${p.category || '미분류'}\n요약: ${p.summary}`)
+      .join('\n\n---\n\n');
+
+    const message = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 4096,
+      messages: [{
+        role: 'user',
+        content: `아래는 일본 의사 에베 코지(江部康二)의 당질제한 블로그 포스트 100개 샘플입니다.
+이 콘텐츠를 바탕으로 한국 YouTube 채널의 당질제한 콘텐츠 주제를 10개 분석해주세요.
+
+응답은 반드시 아래 JSON 배열 형식만 출력하세요. 다른 텍스트 없이 JSON만:
+[
+  {
+    "topic": "주제명 (한국어, 20자 이내)",
+    "description": "이 주제가 왜 YouTube 콘텐츠로 좋은지 설명 (2-3문장)",
+    "example_titles": ["영상 제목 1", "영상 제목 2", "영상 제목 3", "영상 제목 4", "영상 제목 5"],
+    "related_keywords": ["키워드1", "키워드2", "키워드3", "키워드4", "키워드5"]
+  }
+]
+
+포스트 샘플:
+${postList}`
+      }]
+    });
+
+    const text = message.content[0].text.trim();
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    const topics = JSON.parse(jsonMatch ? jsonMatch[0] : text);
+
+    res.json(topics);
+  } catch (e) {
+    console.error(e);
     res.status(500).json({ error: e.message });
   }
 });
