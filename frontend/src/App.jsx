@@ -253,6 +253,194 @@ function SearchTab() {
   );
 }
 
+// ─── 에베 박사 답변 검색 모달 ──────────────────
+function DoctorSearchModal({ initialQuery, onClose }) {
+  const [query, setQuery] = useState(initialQuery || "");
+  const [posts, setPosts] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [searching, setSearching] = useState(false);
+  const [selectedPostId, setSelectedPostId] = useState(null);
+  const [postData, setPostData] = useState(null);
+  const [postLoading, setPostLoading] = useState(false);
+
+  const doSearch = useCallback((q) => {
+    if (!q.trim()) return;
+    setSearching(true);
+    setPosts([]);
+    fetch(`${API}/posts?q=${encodeURIComponent(q)}&limit=20`)
+      .then(r => r.json())
+      .then(d => { setPosts(d.posts || []); setTotal(d.total || 0); setSearching(false); })
+      .catch(() => setSearching(false));
+  }, []);
+
+  useEffect(() => { if (initialQuery) doSearch(initialQuery); }, [initialQuery, doSearch]);
+
+  const loadPost = (postId) => {
+    setSelectedPostId(postId);
+    setPostData(null);
+    setPostLoading(true);
+    fetch(`${API}/posts/${postId}`)
+      .then(r => r.json())
+      .then(d => { setPostData(d); setPostLoading(false); });
+  };
+
+  const doctorComments = postData?.comments?.filter(c => c.is_doctor_reply) || [];
+
+  return (
+    <div
+      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1100, padding: 20 }}
+      onClick={e => e.target === e.currentTarget && onClose()}
+    >
+      <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 1000, height: "88vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+
+        {/* 헤더 */}
+        <div style={{ padding: "16px 20px", borderBottom: "1px solid #eee", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: "#1a2340" }}>👨‍⚕️ 에베 박사 답변 검색</div>
+          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#888" }}>✕</button>
+        </div>
+
+        <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+
+          {/* 왼쪽: 검색 + 포스트 목록 */}
+          <div style={{ width: 320, borderRight: "1px solid #eee", display: "flex", flexDirection: "column", flexShrink: 0 }}>
+            <div style={{ padding: "12px 14px", borderBottom: "1px solid #f0f0f0", flexShrink: 0 }}>
+              <div style={{ display: "flex", gap: 6 }}>
+                <input
+                  value={query}
+                  onChange={e => setQuery(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && doSearch(query)}
+                  placeholder="키워드 재검색..."
+                  style={{ flex: 1, padding: "8px 12px", borderRadius: 6, border: "1px solid #ddd", fontSize: 13, outline: "none" }}
+                />
+                <button onClick={() => doSearch(query)}
+                  style={{ padding: "8px 12px", background: "#1a5fa8", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
+                  검색
+                </button>
+              </div>
+              {total > 0 && (
+                <div style={{ fontSize: 12, color: "#888", marginTop: 6 }}>
+                  총 <strong>{total.toLocaleString()}</strong>개 포스트
+                </div>
+              )}
+            </div>
+
+            <div style={{ flex: 1, overflowY: "auto" }}>
+              {searching && <div style={{ textAlign: "center", padding: 24, color: "#aaa", fontSize: 13 }}>검색 중...</div>}
+              {!searching && posts.length === 0 && query && (
+                <div style={{ textAlign: "center", padding: 24, color: "#bbb", fontSize: 13 }}>검색 결과 없음</div>
+              )}
+              {posts.map(p => (
+                <div key={p.id} onClick={() => loadPost(p.id)}
+                  style={{
+                    padding: "12px 14px", cursor: "pointer", borderBottom: "1px solid #f5f5f5",
+                    background: selectedPostId === p.id ? "#f0f4ff" : "#fff",
+                    borderLeft: `3px solid ${selectedPostId === p.id ? "#4a6cf7" : "transparent"}`,
+                    transition: "background 0.1s",
+                  }}
+                  onMouseEnter={e => { if (selectedPostId !== p.id) e.currentTarget.style.background = "#fafafa"; }}
+                  onMouseLeave={e => { if (selectedPostId !== p.id) e.currentTarget.style.background = "#fff"; }}
+                >
+                  <div style={{ fontSize: 13, fontWeight: 500, color: "#1a1a1a", lineHeight: 1.4, marginBottom: 5 }}>
+                    {p.title_ko || p.title_ja}
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: 11, color: "#aaa" }}>{p.published_at}</span>
+                    {p.comment_count > 0 && (
+                      <span style={{ fontSize: 11, color: "#1a5fa8", background: "#e8f0fb", padding: "1px 7px", borderRadius: 8 }}>
+                        💬 {p.comment_count}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* 오른쪽: 포스트 본문 + 박사 댓글만 */}
+          <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>
+            {!selectedPostId && !searching && (
+              <div style={{ textAlign: "center", padding: "80px 20px", color: "#bbb" }}>
+                <div style={{ fontSize: 40, marginBottom: 12 }}>👨‍⚕️</div>
+                <div style={{ fontSize: 15, marginBottom: 6 }}>왼쪽에서 포스트를 선택하세요</div>
+                <div style={{ fontSize: 13 }}>에베 박사의 답변만 필터링해서 표시됩니다</div>
+              </div>
+            )}
+
+            {postLoading && (
+              <div style={{ textAlign: "center", padding: 60, color: "#aaa" }}>불러오는 중...</div>
+            )}
+
+            {postData && !postLoading && (
+              <>
+                {/* 포스트 본문 */}
+                <div style={{ marginBottom: 24 }}>
+                  <h2 style={{ fontSize: 19, fontWeight: 700, color: "#1a1a1a", marginBottom: 6, lineHeight: 1.4 }}>
+                    {postData.post.title_ko}
+                  </h2>
+                  <div style={{ fontSize: 12, color: "#999", marginBottom: 14 }}>
+                    {postData.post.published_at} · {postData.post.category}
+                    <a href={postData.post.url} target="_blank" rel="noopener noreferrer"
+                      style={{ marginLeft: 10, color: "#4a6cf7", textDecoration: "none" }}>
+                      원문 ↗
+                    </a>
+                  </div>
+                  <div style={{
+                    fontSize: 14, lineHeight: 1.9, color: "#333", whiteSpace: "pre-wrap",
+                    background: "#fafafa", borderRadius: 8, padding: "14px 18px",
+                    maxHeight: 260, overflowY: "auto", border: "1px solid #f0f0f0",
+                  }}>
+                    {postData.post.content_ko}
+                  </div>
+                </div>
+
+                {/* 박사 답변 섹션 */}
+                <div style={{ paddingTop: 4 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, paddingBottom: 10, borderBottom: "2px solid #bcd4f5" }}>
+                    <span style={{ fontSize: 15, fontWeight: 700, color: "#1a5fa8" }}>👨‍⚕️ 에베 박사 답변</span>
+                    <span style={{ fontSize: 12, color: "#888" }}>
+                      {doctorComments.length > 0 ? `${doctorComments.length}개` : "없음"}
+                    </span>
+                    <span style={{ fontSize: 11, color: "#aaa", marginLeft: "auto" }}>
+                      전체 댓글 {postData.comments.length}개 중 박사 답변만 표시
+                    </span>
+                  </div>
+
+                  {doctorComments.length === 0 ? (
+                    <div style={{ textAlign: "center", padding: "28px 0", color: "#bbb", fontSize: 13 }}>
+                      이 포스트에는 에베 박사 답변이 없습니다
+                    </div>
+                  ) : (
+                    doctorComments.map(c => (
+                      <div key={c.id} style={{
+                        background: "#f0f7ff", border: "1px solid #bcd4f5",
+                        borderRadius: 8, padding: "14px 18px", marginBottom: 12,
+                      }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, fontSize: 12 }}>
+                          <span style={{ fontWeight: 600, color: "#1a5fa8" }}>
+                            👨‍⚕️ {c.author}
+                            <span style={{ marginLeft: 6, background: "#1a5fa8", color: "#fff", padding: "1px 6px", borderRadius: 8, fontSize: 11 }}>
+                              박사 답변
+                            </span>
+                          </span>
+                          <span style={{ color: "#aaa" }}>{c.posted_at}</span>
+                        </div>
+                        <div style={{ fontSize: 14, color: "#1a1a1a", lineHeight: 1.8, marginBottom: 10 }}>{c.content_ko}</div>
+                        <div style={{ fontSize: 12, color: "#777", lineHeight: 1.7, borderTop: "1px solid #d0e4f7", paddingTop: 8, fontFamily: "serif" }}>
+                          {c.content_ja}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── 소재발굴 탭 ────────────────────────────────
 const PAGE_LIMIT = 100;
 
@@ -269,9 +457,8 @@ function ContentMiningTab({ onAddToKanban }) {
   const [analyzingQuestions, setAnalyzingQuestions] = useState(false);
   const [loadingTopics, setLoadingTopics] = useState(false);
   const [loadingQuestions, setLoadingQuestions] = useState(false);
-  const [doctorSearchQuery, setDoctorSearchQuery] = useState("");
-  const [doctorResults, setDoctorResults] = useState([]);
-  const [selectedPostId, setSelectedPostId] = useState(null);
+  const [doctorModalOpen, setDoctorModalOpen] = useState(false);
+  const [doctorModalQuery, setDoctorModalQuery] = useState("");
 
   const fetchTopics = useCallback((pg = 1) => {
     setLoadingTopics(true);
@@ -397,17 +584,20 @@ function ContentMiningTab({ onAddToKanban }) {
     setSelectedIds(new Set());
   };
 
-  const handleDoctorSearch = async () => {
-    const q = selectedIds.size > 0
-      ? (activeView === "주제문"
-        ? topics.find(t => selectedIds.has(t.id))?.related_keywords?.[0]
-        : questions.find(q => selectedIds.has(q.id))?.content?.slice(0, 20))
-      : doctorSearchQuery;
+  const handleDoctorSearch = () => {
+    if (selectedIds.size === 0) return;
+    let q = "";
+    if (activeView === "주제문") {
+      const selected = topics.filter(t => selectedIds.has(t.id));
+      const kws = [...new Set(selected.flatMap(t => t.related_keywords || []))].slice(0, 3);
+      q = kws.length > 0 ? kws.join(" ") : (selected[0]?.topic?.slice(0, 20) || "");
+    } else {
+      const selected = questions.filter(q => selectedIds.has(q.id));
+      q = selected[0]?.content?.slice(0, 30) || selected[0]?.category || "";
+    }
     if (!q) return;
-    const res = await fetch(`${API}/posts?q=${encodeURIComponent(q)}&limit=10`);
-    const data = await res.json();
-    setDoctorResults(data.posts || []);
-    setDoctorSearchQuery(q);
+    setDoctorModalQuery(q);
+    setDoctorModalOpen(true);
   };
 
   const items = activeView === "주제문" ? topics : questions;
@@ -418,14 +608,6 @@ function ContentMiningTab({ onAddToKanban }) {
   const rangeStart = (currentPage - 1) * PAGE_LIMIT + 1;
   const rangeEnd = Math.min(currentPage * PAGE_LIMIT, total);
   const setPage = activeView === "주제문" ? setTopicsPage : setQuestionsPage;
-
-  if (selectedPostId) {
-    return (
-      <div>
-        <PostDetail postId={selectedPostId} onClose={() => setSelectedPostId(null)} />
-      </div>
-    );
-  }
 
   return (
     <div>
@@ -571,26 +753,6 @@ function ContentMiningTab({ onAddToKanban }) {
         </>
       )}
 
-      {/* 에베 박사 답변 검색 패널 */}
-      {doctorResults.length > 0 && (
-        <div style={{ marginTop: 20, border: "1px solid #e8e8e8", borderRadius: 10, padding: 16, background: "#fafafa" }}>
-          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 10, color: "#333" }}>
-            🔍 "{doctorSearchQuery}" 관련 포스트
-          </div>
-          {doctorResults.map(p => (
-            <div key={p.id} onClick={() => setSelectedPostId(p.id)}
-              style={{ padding: "8px 12px", marginBottom: 6, borderRadius: 8, cursor: "pointer", fontSize: 13, background: "#fff", border: "1px solid #eee" }}>
-              <span style={{ fontWeight: 500 }}>{p.title_ko || p.title_ja}</span>
-              <span style={{ color: "#aaa", marginLeft: 8, fontSize: 12 }}>{p.published_at}</span>
-            </div>
-          ))}
-          <button onClick={() => setDoctorResults([])}
-            style={{ marginTop: 6, background: "none", border: "none", color: "#aaa", cursor: "pointer", fontSize: 12 }}>
-            닫기
-          </button>
-        </div>
-      )}
-
       {/* 하단 액션 버튼 */}
       <div style={{ display: "flex", gap: 10, marginTop: 16, paddingTop: 16, borderTop: "1px solid #f0f0f0" }}>
         <button onClick={handleAddToKanban} disabled={selectedIds.size === 0}
@@ -601,14 +763,23 @@ function ContentMiningTab({ onAddToKanban }) {
           }}>
           📌 선택항목 칸반으로 올리기 ({selectedIds.size})
         </button>
-        <button onClick={handleDoctorSearch} disabled={selectedIds.size === 0 && !doctorSearchQuery}
+        <button onClick={handleDoctorSearch} disabled={selectedIds.size === 0}
           style={{
-            flex: 1, padding: "12px 0", borderRadius: 8, border: "1px solid #1a5fa8", cursor: "pointer",
-            background: "#fff", color: "#1a5fa8", fontSize: 14, fontWeight: 600,
+            flex: 1, padding: "12px 0", borderRadius: 8, border: "none", cursor: selectedIds.size === 0 ? "not-allowed" : "pointer",
+            background: selectedIds.size === 0 ? "#f0f0f0" : "#1a5fa8", color: selectedIds.size === 0 ? "#aaa" : "#fff",
+            fontSize: 14, fontWeight: 600,
           }}>
           👨‍⚕️ 에베 박사 답변 검색
         </button>
       </div>
+
+      {/* 박사 답변 검색 모달 */}
+      {doctorModalOpen && (
+        <DoctorSearchModal
+          initialQuery={doctorModalQuery}
+          onClose={() => setDoctorModalOpen(false)}
+        />
+      )}
     </div>
   );
 }
