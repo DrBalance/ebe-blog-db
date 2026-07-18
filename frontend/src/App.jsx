@@ -254,10 +254,16 @@ function SearchTab() {
 }
 
 // ─── 소재발굴 탭 ────────────────────────────────
+const PAGE_LIMIT = 100;
+
 function ContentMiningTab({ onAddToKanban }) {
   const [activeView, setActiveView] = useState("주제문");
   const [topics, setTopics] = useState([]);
+  const [topicsTotal, setTopicsTotal] = useState(0);
+  const [topicsPage, setTopicsPage] = useState(1);
   const [questions, setQuestions] = useState([]);
+  const [questionsTotal, setQuestionsTotal] = useState(0);
+  const [questionsPage, setQuestionsPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [analyzingTopics, setAnalyzingTopics] = useState(false);
   const [analyzingQuestions, setAnalyzingQuestions] = useState(false);
@@ -267,26 +273,32 @@ function ContentMiningTab({ onAddToKanban }) {
   const [doctorResults, setDoctorResults] = useState([]);
   const [selectedPostId, setSelectedPostId] = useState(null);
 
-  const fetchTopics = useCallback(() => {
+  const fetchTopics = useCallback((pg = 1) => {
     setLoadingTopics(true);
-    fetch(`${API}/topics?limit=100`)
+    fetch(`${API}/topics?limit=${PAGE_LIMIT}&page=${pg}`)
       .then(r => r.json())
-      .then(d => { setTopics(d.topics || []); setLoadingTopics(false); })
+      .then(d => {
+        setTopics(d.topics || []);
+        setTopicsTotal(d.total || 0);
+        setLoadingTopics(false);
+      })
       .catch(() => setLoadingTopics(false));
   }, []);
 
-  const fetchQuestions = useCallback(() => {
+  const fetchQuestions = useCallback((pg = 1) => {
     setLoadingQuestions(true);
-    fetch(`${API}/questions?limit=100`)
+    fetch(`${API}/questions?limit=${PAGE_LIMIT}&page=${pg}`)
       .then(r => r.json())
-      .then(d => { setQuestions(d.questions || []); setLoadingQuestions(false); })
+      .then(d => {
+        setQuestions(d.questions || []);
+        setQuestionsTotal(d.total || 0);
+        setLoadingQuestions(false);
+      })
       .catch(() => setLoadingQuestions(false));
   }, []);
 
-  useEffect(() => {
-    fetchTopics();
-    fetchQuestions();
-  }, [fetchTopics, fetchQuestions]);
+  useEffect(() => { fetchTopics(topicsPage); }, [topicsPage, fetchTopics]);
+  useEffect(() => { fetchQuestions(questionsPage); }, [questionsPage, fetchQuestions]);
 
   // 뷰 전환 시 선택 초기화
   useEffect(() => { setSelectedIds(new Set()); }, [activeView]);
@@ -298,7 +310,8 @@ function ContentMiningTab({ onAddToKanban }) {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       alert(`주제문 ${data.added}개 추가되었습니다.`);
-      fetchTopics();
+      setTopicsPage(1);
+      fetchTopics(1);
     } catch (e) {
       alert("분석 실패: " + e.message);
     }
@@ -312,7 +325,8 @@ function ContentMiningTab({ onAddToKanban }) {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       alert(`환자질문 ${data.added}개 추가되었습니다.`);
-      fetchQuestions();
+      setQuestionsPage(1);
+      fetchQuestions(1);
     } catch (e) {
       alert("분석 실패: " + e.message);
     }
@@ -359,7 +373,7 @@ function ContentMiningTab({ onAddToKanban }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids, used: true }),
       });
-      fetchTopics();
+      fetchTopics(topicsPage);
     } else {
       const selected = questions.filter(q => selectedIds.has(q.id));
       const cards = selected.map(q => ({
@@ -378,7 +392,7 @@ function ContentMiningTab({ onAddToKanban }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids, used: true }),
       });
-      fetchQuestions();
+      fetchQuestions(questionsPage);
     }
     setSelectedIds(new Set());
   };
@@ -398,6 +412,12 @@ function ContentMiningTab({ onAddToKanban }) {
 
   const items = activeView === "주제문" ? topics : questions;
   const isLoading = activeView === "주제문" ? loadingTopics : loadingQuestions;
+  const currentPage = activeView === "주제문" ? topicsPage : questionsPage;
+  const total = activeView === "주제문" ? topicsTotal : questionsTotal;
+  const totalPages = Math.ceil(total / PAGE_LIMIT);
+  const rangeStart = (currentPage - 1) * PAGE_LIMIT + 1;
+  const rangeEnd = Math.min(currentPage * PAGE_LIMIT, total);
+  const setPage = activeView === "주제문" ? setTopicsPage : setQuestionsPage;
 
   if (selectedPostId) {
     return (
@@ -440,7 +460,9 @@ function ContentMiningTab({ onAddToKanban }) {
               borderBottom: activeView === v ? "2px solid #4a6cf7" : "none",
               marginBottom: -2,
             }}>
-            {v === "주제문" ? `📋 주제문 (${topics.length})` : `💬 환자질문 (${questions.length})`}
+            {v === "주제문"
+              ? `📋 주제문 (${topicsTotal.toLocaleString()})`
+              : `💬 환자질문 (${questionsTotal.toLocaleString()})`}
           </button>
         ))}
       </div>
@@ -456,19 +478,21 @@ function ContentMiningTab({ onAddToKanban }) {
         </div>
       ) : (
         <>
+          {/* 선택 상태 + 범위 표시 */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer", color: "#555" }}>
               <input type="checkbox"
                 checked={selectedIds.size === items.length && items.length > 0}
                 onChange={toggleAll} />
-              전체 선택 ({selectedIds.size}/{items.length})
+              이 페이지 전체 선택 ({selectedIds.size}/{items.length})
             </label>
-            <div style={{ fontSize: 12, color: "#999" }}>
-              {activeView === "주제문" ? "미사용만 표시 중" : "미사용만 표시 중"}
+            <div style={{ fontSize: 13, color: "#666" }}>
+              <strong>{total.toLocaleString()}</strong>개 중{" "}
+              <strong>{rangeStart.toLocaleString()}–{rangeEnd.toLocaleString()}</strong>번째
             </div>
           </div>
 
-          <div style={{ maxHeight: 460, overflowY: "auto", border: "1px solid #eee", borderRadius: 10, background: "#fff" }}>
+          <div style={{ border: "1px solid #eee", borderRadius: 10, background: "#fff", overflow: "hidden" }}>
             {items.map((item, idx) => {
               const isSelected = selectedIds.has(item.id);
               return (
@@ -513,6 +537,37 @@ function ContentMiningTab({ onAddToKanban }) {
               );
             })}
           </div>
+
+          {/* 페이지네이션 */}
+          {totalPages > 1 && (
+            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 10, marginTop: 14 }}>
+              <button
+                onClick={() => { setPage(p => Math.max(1, p - 1)); setSelectedIds(new Set()); }}
+                disabled={currentPage === 1}
+                style={{
+                  padding: "7px 16px", borderRadius: 6, border: "1px solid #ddd",
+                  background: currentPage === 1 ? "#f5f5f5" : "#fff",
+                  color: currentPage === 1 ? "#ccc" : "#333",
+                  cursor: currentPage === 1 ? "not-allowed" : "pointer", fontSize: 13,
+                }}>
+                ← 이전
+              </button>
+              <span style={{ fontSize: 13, color: "#555", minWidth: 100, textAlign: "center" }}>
+                {currentPage} / {totalPages} 페이지
+              </span>
+              <button
+                onClick={() => { setPage(p => Math.min(totalPages, p + 1)); setSelectedIds(new Set()); }}
+                disabled={currentPage === totalPages}
+                style={{
+                  padding: "7px 16px", borderRadius: 6, border: "1px solid #ddd",
+                  background: currentPage === totalPages ? "#f5f5f5" : "#fff",
+                  color: currentPage === totalPages ? "#ccc" : "#333",
+                  cursor: currentPage === totalPages ? "not-allowed" : "pointer", fontSize: 13,
+                }}>
+                다음 →
+              </button>
+            </div>
+          )}
         </>
       )}
 
